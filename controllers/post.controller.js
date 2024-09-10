@@ -1,4 +1,3 @@
-import { populate } from 'dotenv';
 import Post from '../models/post.model.js';
 import Reply from '../models/reply.model.js';
 import User from '../models/user.model.js';
@@ -9,16 +8,16 @@ async function createPost(req, res, next) {
         const { postedBy, text } = req.body;
         let img = req.body.img;
         if (!postedBy || !text) {
-            return res.status(400).json({ message: 'Invalid post data' });
+            return res.status(400).json({ error: 'Invalid post data' });
         }
 
         const user = await User.findById(postedBy);
         if (!user) {
-            return res.status(404).json({ message: 'User not found' });
+            return res.status(404).json({ error: 'User not found' });
         }
 
         if (user._id.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Unauthorized to create post' });
+            return res.status(403).json({ error: 'Unauthorized to create post' });
         }
 
         if (img) {
@@ -31,13 +30,26 @@ async function createPost(req, res, next) {
 
         res.status(201).json(newPost);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ error: err.message });
     }
 }
 
 async function getPost(req, res, next) {
     try {
-        const post = await Post.findById(req.params.id);
+        const post = await Post.findById(req.params.id)
+            .populate({
+                path: 'postedBy',
+                select: '_id name username profilePic'
+            })
+            .populate({
+                path: 'replies',
+                model: 'Reply',
+                populate: {
+                    path: 'repliedBy',
+                    model: 'User',
+                    select: '_id name username profilePic'
+                }
+            });
         if (!post) {
             return res.status(404).json({ message: 'Post not found' });
         }
@@ -52,17 +64,22 @@ async function deletePost(req, res, next) {
     try {
         const post = await Post.findById(req.params.id);
         if (!post) {
-            return res.status(404).json({ message: 'Post not found' });
+            return res.status(404).json({ error: 'Post not found' });
         }
 
         if (post.postedBy.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ message: 'Unauthorized to delete post' });
+            return res.status(403).json({ error: 'Unauthorized to delete post' });
+        }
+
+        if (post.img) {
+            const imgId = post.img.split("/").pop().split(".")[0]
+            await cloudinary.uploader.destroy(imgId);
         }
 
         await Post.findByIdAndDelete(req.params.id);
-        res.status(204).json();
+        return res.status(204).json({ message: "Deleted post" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        return res.status(500).json({ error: err.message });
     }
 }
 
